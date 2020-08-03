@@ -1,6 +1,6 @@
 library(readr)
 
-covid_df <- read_csv("Documents/programas/courses/DataQuest/Guided Project: Investigating COVID-19 Virus Trends/covid19.csv")
+covid_df <- read_csv("covid19.csv")
 
 dim(covid_df)
 vector_cols <- colnames(covid_df)
