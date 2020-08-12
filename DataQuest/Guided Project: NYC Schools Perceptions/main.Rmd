@@ -1,0 +1,10 @@
+---
+title: 'Guided Project: Exploring NYC Schools Data'
+author: "Artur Jacques Nürnberg"
+date: "8/10/2020"
+output: html_document
+---
+
+
+
+
