@@ -1,0 +1,114 @@
+---
+title: "workflow2"
+author: "Artur Jacques Nürnberg"
+date: "8/4/2020"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(lubridate)
+
+sales <- read_csv("sales2019.csv")
+head(sales)
+```
+
+How big is the dataset? What are the column names, and what do they seem to represent?
+
+```{r}
+dim(sales)
+```
+The dataset has 5000 lines and 5 columns, `date` that represents the date that 
+was purchase, `user_submitted_review` that is the review, `title` that is the 
+title of the book, `total_purchased` that represents the total purchased and
+`customer_type` that represents the customer type.
+
+
+What are the types of each of the columns?
+
+```{r}
+for (name in colnames(sales)){
+  print(paste(name, "is of the type", typeof(sales[[name]])))
+}
+```
+That being said, do any of the columns have missing data? If so, make a note of 
+this.
+
+```{r}
+for (name in colnames(sales)){
+  print(paste(name, 'is missing' ,sum(is.na(sales[[name]]))))
+}
+```
+Remove all rows in the dataset that have an NA value for the 
+user_submitted_review column.
+
+```{r}
+sales_review <- filter(sales, !is.na(sales$user_submitted_review))
+head(sales_review)
+```
+
+Using the remaining rows that have data, calculate the average number of books 
+purchased on an order.
+
+```{r}
+avg_purchase <- round(mean(sales_review$total_purchased, na.rm = T))
+avg_purchase
+```
+Fill all of the missing values in total_purchased with the average value you 
+calculated.
+
+```{r}
+sales_review_filled <- sales_review %>% 
+  mutate(total_purchased = if_else(is.na(total_purchased), avg_purchase,total_purchased))
+head(sales_review_filled)
+```
+Create a new column that indicates if the review is positive or not
+
+```{r}
+unique(sales_review_filled$user_submitted_review)
+
+sales_review_filled <- sales_review_filled %>% mutate(
+  is_positive = case_when(
+    str_detect(user_submitted_review, 'OK') ~ T,
+    str_detect(user_submitted_review, 'okay') ~ T,
+    str_detect(user_submitted_review, 'Hated') ~ F,
+    str_detect(user_submitted_review, 'learned') ~ T,
+    str_detect(user_submitted_review, 'Awesome') ~ T,
+    str_detect(user_submitted_review, 'Never') ~ T,
+    str_detect(user_submitted_review, 'not recommend') ~ F,
+    TRUE ~ FALSE
+  )
+)
+
+sales_review_filled %>% select("user_submitted_review", "is_positive") %>% unique()
+```
+
+Perform the proper conversion of the date column, so that it actually represents
+a date and time
+Create a new grouping column using the mutate() function that would help 
+distinguish between sales that happen before July 1, 2019 and sales that happen 
+after this date.
+
+```{r}
+sales_review_filled_dated <- sales_review_filled %>% 
+  mutate(
+    date = mdy(date),
+    before_first_july = date < ymd('2019-7-1')
+  )
+sales_review_filled_dated %>% select('date', 'before_first_july')
+```
+Create a summary table that compares the number of books purchased before 
+July 1, 2019 to after.
+
+```{r}
+sales_review_filled_dated %>% 
+  group_by(before_first_july, customer_type) %>%
+  summarise( total_reviewed= n(), positive_review = sum(is_positive)/n(), 
+             total_purchased = sum(total_purchased))
+```
+
+Bussines purhcase more than individuals in the two periods.
+
+
+
+

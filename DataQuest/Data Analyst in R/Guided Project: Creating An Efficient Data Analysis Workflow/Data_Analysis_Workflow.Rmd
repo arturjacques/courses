@@ -1,0 +1,105 @@
+---
+title: "Efficient Data Analysis Workflow"
+author: "Artur Jacques Nürnberg"
+date: "7/31/2020"
+output: html_document
+---
+
+```{r}
+library(readr)
+library(dplyr)
+
+book_reviews <- read_csv('book_reviews.csv')
+```
+
+dim(book_reviews)
+
+colnames(book_reviews)
+"
+There is 4 columns (book, review, state and price). Book is the name, review the
+score, state that was sold and the price.
+"
+type_col <- c()
+
+```{r}
+for (col in colnames(book_reviews)){
+   type_col <- c(type_col, typeof(book_reviews[[col]]))
+}
+print(type_col)
+
+unique_values <- list(1,1,1,1)
+
+count = 1
+for (col in colnames(book_reviews)){
+  unique_values[[count]] <- unique(book_reviews[[col]])
+  count <- count + 1
+}
+
+print(unique_values)
+```
+"
+There is five books, five qualities, six states and five prices.
+"
+
+```{r}
+filtered_books <- filter(book_reviews, is.na(book_reviews$book))
+
+dim(filtered_books)
+
+filtered_books <- filter(book_reviews, is.na(book_reviews$state))
+
+dim(filtered_books)
+
+filtered_books <- filter(book_reviews, is.na(book_reviews$price))
+
+dim(filtered_books)
+
+filtered_books <- filter(book_reviews, is.na(book_reviews$review))
+```
+
+"The only column missing values is the review"
+
+filled_books <- filter(book_reviews, !is.na(book_reviews$review))
+
+print(filled_books)
+
+"Was removed 206 rows"
+```{r}
+filled_books <- filled_books %>% 
+  mutate(
+    state = case_when(
+      state == 'Texas' ~ 'TX',
+      state == 'New York' ~ 'NY',
+      state == 'California' ~ 'CA',
+      state == 'Florida' ~ 'FL',
+      TRUE ~ state
+    )
+  )
+
+unique(filled_books$state)
+```
+
+```{r}
+filled_books <- filled_books %>%
+  mutate(
+    review_num = case_when(
+      review == 'Excellent' ~ 5,
+      review == 'Great' ~ 4,
+      review == 'Good' ~ 3,
+      review == 'Fair' ~ 2,
+      review == 'Poor' ~ 1,
+    ),
+    is_high_review = if_else(review_num >= 4, TRUE, FALSE)
+  )
+
+print(filled_books)
+```
+
+# To verify which one is the most profitable book lets check the sum of the price
+
+```{r}
+filled_books %>% group_by(book) %>% summarise(profit = sum(price)) %>% arrange(-profit)
+```
+
+
+

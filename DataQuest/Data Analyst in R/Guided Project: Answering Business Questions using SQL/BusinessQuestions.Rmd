@@ -1,0 +1,301 @@
+---
+title: "Business Questions using SQL"
+author: "Artur Jacques Nürnberg"
+date: "8/19/2020"
+output: html_document
+---
+
+Import the RSQLite and DBI libraries.
+
+```{r}
+library(RSQLite)
+library(DBI)
+library(ggplot2)
+library(dplyr)
+```
+
+Create a run_query() function that takes in a SQL query as an argument and 
+returns the result in a dataframe.
+
+```{r}
+run_query <- function(query){
+  conn <- dbConnect(SQLite(), 'chinook.db')
+  result <- dbGetQuery(conn, query)
+  dbDisconnect(conn)
+  return(result)
+}
+
+run_query('SELECT * FROM customer')
+```
+Create a show_tables() function that calls the run_query() function to return a
+list of all tables and views in the database.
+
+```{r}
+show_tables <- function(){
+  run_query("SELECT name FROM sqlite_master WHERE type='table'")
+}
+
+show_tables()
+```
+Write a query that returns each genre, with the number of tracks sold in the USA:
+in absolute numbers
+in percentages
+
+Create a plot to show this data.
+```{r}
+query <- "
+WITH usa_invoice_line AS
+  (
+  SELECT il.* FROM invoice_line il
+  LEFT JOIN invoice i ON i.invoice_id = il.invoice_id
+  LEFT JOIN customer c ON c.customer_id = i.customer_id
+  WHERE c.country = 'USA'
+  ),
+  total_tracks_sold_usa as
+  (
+  SELECT COUNT(*) as total_sold FROM usa_invoice_line
+  )
+
+SELECT 
+  g.name as genre,
+  count(il.invoice_id) as tracks_sold,
+  cast(count(il.invoice_id) as FLOAT)/(SELECT total_sold FROM total_tracks_sold_usa) as pct_track_sold
+FROM genre as g
+LEFT JOIN track tr ON g.genre_id = tr.genre_id
+LEFT JOIN usa_invoice_line il ON il.track_id = tr.track_id
+GROUP BY 1
+ORDER BY 3 DESC
+limit 5
+"
+
+genre_track_sold = run_query(query)
+
+ggplot(data = genre_track_sold) +
+  aes(x = reorder(genre, -pct_track_sold), y = pct_track_sold) +
+  geom_bar(stat = 'identity') +
+  labs(title = 'Percentage of tracks solds per genre',
+       x = 'genre',
+       y = 'Percentage of tracks sold')
+```
+ Write a paragraph that interprets the data and makes a recommendation for the 
+ three artists whose albums we should purchase for the store, based on sales of
+ tracks from their genres.
+
+let's analise the artists that sell more tracks of rock in the USA
+
+
+```{r}
+query <- "
+WITH usa_rock_invoice_line AS
+  (
+  SELECT il.* FROM invoice_line il
+  LEFT JOIN invoice i ON i.invoice_id = il.invoice_id
+  LEFT JOIN customer c ON c.customer_id = i.customer_id
+  LEFT JOIN track tr ON tr.track_id = il.track_id
+  LEFT JOIN genre g ON tr.genre_id = g.genre_id
+  WHERE c.country = 'USA' AND g.name = 'Rock'
+  )
+
+SELECT
+  ar.name AS artist_name,
+  sum(i.total) as value_sold
+FROM usa_rock_invoice_line AS il
+LEFT JOIN invoice i ON i.invoice_id = il.invoice_Id
+LEFT JOIN track tr ON il.track_id = tr.track_id
+LEFT JOIN album al ON al.album_id = tr.album_id
+LEFT JOIN artist ar ON ar.artist_id = al.artist_id
+GROUP BY ar.artist_id
+ORDER BY 2 DESC;
+"
+
+run_query(query)
+```
+
+The artist that have the higher values sold are Van Halen, Nirvana and 
+The Rolling Stones
+
+
+
+Write a query that finds the total dollar amount of sales assigned to each sales 
+support agent within the company. Add any extra attributes for that employee 
+that you find are relevant to the analysis.
+
+Create a plot of the results of your query.
+
+Write a short statement describing your results, and provide a possible 
+interpretation.
+
+
+```{r}
+query <- "
+SELECT
+  e.first_name || ' ' || e.last_name as employee_name,
+  e.hire_date,
+  e.country,
+  SUM(i.total) total_sold
+FROM employee AS e
+LEFT JOIN customer AS c ON e.employee_id = c.support_rep_id
+LEFT JOIN invoice as i ON c.customer_id = i.customer_id
+WHERE e.title = 'Sales Support Agent'
+GROUP BY e.employee_id
+"
+
+sales_by_employee <- run_query(query)
+sales_by_employee
+```
+ The employee with more sales is the older and the least sales is the newest.
+ 
+ 
+```{r}
+ggplot(data = sales_by_employee) +
+  aes(x = reorder(employee_name, -total_sold), y = total_sold) +
+  geom_bar(stat = 'identity') +
+  labs(title = 'Total Sold by Employee',
+       x = 'Employee',
+       y = 'Total Sold')
+```
+Write a query that collates data on purchases from different countries. For each
+country, include:
+total number of customers;
+total value of sales;
+average value of sales per customer;
+average order value.
+
+Where a country has only one customer, collect them into an "Other" group.
+The results should be sorted by the total sales from highest to lowest, with the
+"Other" group at the very bottom.
+
+```{r}
+query <- "
+WITH country_group_resume AS
+  (
+  SELECT 
+    CASE
+      WHEN COUNT(DISTINCT c.customer_id) = 1 THEN 'OTHER'
+      ELSE c.country
+    END AS country_group,
+    COUNT(DISTINCT c.customer_id) as total_customers,
+    SUM(i.total) as total_sold,
+    COUNT(i.invoice_id) as number_sales
+  FROM customer c
+  LEFT JOIN invoice i ON c.customer_id = i.customer_id
+  GROUP BY c.country
+  )
+  
+SELECT
+  country_group,
+  SUM(total_customers) as total_customers,
+  SUM(total_sold) as total_sold,
+  SUM(total_sold)/(sum(total_customers)) as avg_value_per_customer,
+  SUM(total_sold)/(SUM(number_sales)) as avg_value_per_sale
+FROM country_group_resume
+GROUP BY 1 
+ORDER BY 2 DESC;
+"
+
+sales_by_country <- run_query(query)
+sales_by_country
+```
+For each dimension, create a visualization which demonstrates the data we 
+collated in the previous step.
+You should decide whether the "Other" group is relevant to your analysis and 
+make decisions on where to include it (if anywhere) in your visualizations.
+Write a few sentences interpreting your data and visualizations, and make one 
+or more recommendations to the marketing team on which countries have potential 
+for growth.
+
+```{r}
+ggplot(data = sales_by_country) +
+  aes(x = reorder(country_group, -total_customers), y = total_customers) +
+  geom_bar(stat = 'identity') +
+  labs(title = 'Customers per Country',
+       x = 'Country',
+       y = 'Customers') +
+   theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(data = sales_by_country) +
+  aes(x = reorder(country_group, -total_sold), y = total_sold) +
+  geom_bar(stat = 'identity') +
+  labs(title = 'Total Sold per Country',
+       x = 'Country',
+       y = 'Total Sold') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(data = sales_by_country) +
+  aes(x = reorder(country_group, -avg_value_per_customer), y = avg_value_per_customer) +
+  geom_bar(stat = 'identity') +
+  labs(title = 'Average Value Spent per Customer per Country',
+       x = 'Country',
+       y = 'Average Value Spent per Customer') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+ggplot(data = sales_by_country) +
+  aes(x = reorder(country_group, -avg_value_per_sale), y = avg_value_per_sale) +
+  geom_bar(stat = 'identity') +
+  labs(title = 'Average Value Spent per Sale per Country',
+       x = 'Country',
+       y = 'Average Value Spent per Sale') +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+```
+There is many countries with only one customer and countries that have English
+as official language have the majority of the clients.
+The total sold per country follow the same tendency as the number of costumers.
+The average spent per customer per country do not have a big variance, except
+the Czech Republic that is a outlier, but there is only 2 costumers in this 
+country.
+The average value spent per sale it almost the same also.
+
+
+
+Write a query that categorizes each invoice as either an album purchase or not,
+and calculates the following summary statistics:
+Number of invoices;
+Percentage of invoices.
+Write one to two sentences explaining your findings, and making a prospective
+recommendation on whether the Chinook store should continue to buy full albums
+from record companies.
+
+```{r}
+query <- "
+WITH resume_invoice as
+    (
+    SELECT 
+        count(t.track_id) tracks_bought, 
+        AVG(t.album_id) average_album_id,
+        CAST(MIN(t.album_id) as float) min_album_id
+    FROM invoice i
+    LEFT JOIN invoice_line iv ON iv.invoice_id = i.invoice_id
+    LEFT JOIN track t on t.track_id = iv.track_id
+    group by i.invoice_id
+    ),
+tracks_album as
+    (
+    SELECT 
+        album_id, 
+        COUNT(track_id) as n_tracks FROM track
+    GROUP BY album_id
+    )
+
+SELECT 
+    SUM(re.tracks_bought) as tracks_sold,
+    COUNT(re.tracks_bought) as count_invoice,
+    CAST(COUNT(re.tracks_bought) as float)/(SELECT count(*) FROM resume_invoice) as percentage_invoice,
+    CAST(SUM(re.tracks_bought) as float)/(SELECT SUM(re.tracks_bought) FROM resume_invoice) as percentage_sold,
+    CASE
+        WHEN re.average_album_id = al.album_id
+        AND
+        tracks_bought = n_tracks THEN 'yes'
+    ELSE
+        'no'
+    END is_album
+FROM resume_invoice re
+LEFT JOIN tracks_album al on al.album_id = re.min_album_id
+GROUP BY is_album;
+"
+
+sales_by_country <- run_query(query)
+sales_by_country
+```
+
+The majority of customers buy tracks and no albuns
+
